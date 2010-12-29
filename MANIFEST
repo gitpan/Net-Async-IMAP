@@ -1,0 +1,14 @@
+Changes
+LICENSE
+MANIFEST
+META.yml
+Makefile.PL
+README
+dist.ini
+examples/check.pl
+examples/server.pl
+lib/Net/Async/IMAP.pm
+lib/Net/Async/IMAP/Client.pm
+lib/Net/Async/IMAP/Server.pm
+t/00-pod.t
+t/00-use.t

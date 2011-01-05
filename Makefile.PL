@@ -9,7 +9,7 @@ use ExtUtils::MakeMaker 6.31;
 
 
 my %WriteMakefileArgs = (
-  'ABSTRACT' => 'Asynchronous IMAP client',
+  'ABSTRACT' => 'Asynchronous IMAP handling',
   'AUTHOR' => 'Tom Molesworth <net-async-imap@entitymodel.com>',
   'BUILD_REQUIRES' => {},
   'CONFIGURE_REQUIRES' => {
@@ -20,12 +20,13 @@ my %WriteMakefileArgs = (
   'LICENSE' => 'perl',
   'NAME' => 'Net::Async::IMAP',
   'PREREQ_PM' => {
+    'IO::Async' => '0.34',
     'IO::Async::SSL' => '0.04',
-    'Protocol::IMAP' => '0.001',
+    'Protocol::IMAP' => '0.002',
     'Socket' => '0',
     'parent' => '0'
   },
-  'VERSION' => '0.001',
+  'VERSION' => '0.002',
   'test' => {
     'TESTS' => 't/*.t'
   }

@@ -1,11 +1,11 @@
 package Net::Async::IMAP::Client;
 use strict;
 use warnings;
-use parent qw{IO::Async::Protocol::Stream Protocol::IMAP::Client};
+use parent qw{IO::Async::Protocol::LineStream Protocol::IMAP::Client};
 
 use IO::Async::SSL;
 use Socket;
-our $VERSION = '0.001';
+our $VERSION = '0.002';
 
 =head1 NAME
 
@@ -19,7 +19,7 @@ Net::Async::IMAP::Client - asynchronous IMAP client based on L<Protocol::IMAP::C
  my $imap = Net::Async::IMAP::Client->new(
  	loop => $loop,
 	host => 'mailserver.com',
-	service => 'imap',
+	service => 10143, # custom port number example
 	user => 'user@mailserver.com',
 	pass => 'password',
 
@@ -68,26 +68,58 @@ sub new {
 	return $self;
 }
 
-=head2 on_read
+sub _init {
+	my $self = shift;
+	$self->SUPER::_init(@_);
+
+	$self->{idle_timer} = IO::Async::Timer::Countdown->new(
+		delay => 25 * 60,
+		on_expire => $self->_capture_weakself( sub {
+			my $self = shift;
+			$self->done(
+				on_ok => sub {
+					$self->noop(
+						on_ok => sub {
+							$self->idle;
+						}
+					);
+				}
+			);
+		})
+	);
+
+	$self->add_child( $self->{idle_timer} );
+}
+
+=head2 on_read_line
 
 Pass any new data into the protocol handler.
 
 =cut
 
-sub on_read {
-	my ($self, $buffref, $closed) = @_;
-	$self->debug("Stream was closed, this was not expected") if $closed;
+sub on_read_line {
+	my ($self, $line) = @_;
+	$self->debug("Have line [$line]");
+	my $remaining = $self->on_single_line($line);
+	return 1 unless $remaining;
 
-# We'll be called again, don't know where, don't know when, but the rest of our data will be waiting for us
-	if($$buffref =~ s/^(.*[\n\r]+)//) {
-		if($self->is_multi_line) {
-			$self->on_multi_line($1);
-		} else {
-			$self->on_single_line($1);
-		}
-		return 1;
-	}
-	return 0;
+# Switch to multi-line (fixed data size) mode
+	return $self->_capture_weakself(sub {
+		my $self = shift;
+		my ($stream, $buffref, $closed) = @_;
+
+		$self->debug("Have length [" . length($$buffref) . "] expecting $remaining");
+		# Allow buffer to build up until we have the entire response
+		return 0 unless length $$buffref >= $remaining;
+
+		# Extract full buffer and pass it on to the multiline handler
+		my $data = substr($$buffref, 0, $remaining, '');
+		$self->on_multi_line($data);
+
+		# On completion drop back to the previous handler
+		delete $self->{multiline};
+		return undef;
+	});
 }
 
 =head2 configure
@@ -110,11 +142,15 @@ sub configure {
 		$self->{$_} = delete $args{$_} if exists $args{$_};
 	}
 
+	if( exists $args{idle_timeout} ) {
+		$self->{idle_timer}->configure( delay => delete $args{idle_timeout} );
+	}
+
+
 # Don't think I like this much, but didn't want the list of callbacks held here
 	%args = $self->Protocol::IMAP::Client::configure(%args);
 
 	$self->SUPER::configure(%args);
-	return $self;
 }
 
 sub on_user { shift->{user} }
@@ -131,10 +167,7 @@ sub on_connection_established {
 	my $sock = shift;
 	my $transport = IO::Async::Stream->new(handle => $sock)
 		or die "No transport?";
-	$self->{transport} = $transport;
-	$self->setup_transport($transport);
-	my $loop = $self->get_loop or die "No IO::Async::Loop available";
-	$loop->add($transport);
+	$self->configure(transport => $transport);
 	$self->debug("Have transport " . $self->transport);
 }
 
@@ -148,26 +181,14 @@ sub on_starttls {
 	my $self = shift;
 	$self->debug("Upgrading to TLS");
 
-# Most of this taken directly from IO::Async::SSL, since we seem to be attempting to remove the transport from the list of children
-# when doing the regular upgrade via ->configure(transport => undef) here. Could be something to do with the dodgy code in
-# L<_add_to_loop>.
 	require IO::Async::SSLStream;
 
-	my $socket = $self->transport->read_handle;
-	undef $self->{transport};
-
-	$self->get_loop->SSL_upgrade(
-		handle => $socket,
+	$self->SSL_upgrade(
 		on_upgraded => $self->_capture_weakself(sub {
-			my ($self, $newsocket) = @_;
+			my ($self) = @_;
 			$self->debug("TLS upgrade complete");
 
-			my $sslstream = IO::Async::SSLStream->new(
-				handle => $newsocket,
-			);
 			$self->{tls_enabled} = 1;
-
-			$self->configure(transport => $sslstream);
 			$self->get_capabilities;
 		}),
 		on_error => sub { die "error @_"; }
@@ -176,6 +197,8 @@ sub on_starttls {
 
 =head2 start_idle_timer
 
+Restart the idle timer.
+
 =cut
 
 sub start_idle_timer {
@@ -183,23 +206,6 @@ sub start_idle_timer {
 	my %args = @_;
 
 	$self->{idle_timer}->stop if $self->{idle_timer};
-	$self->{idle_timer} = IO::Async::Timer::Countdown->new(
-		delay => $args{idle_timeout} // 25 * 60,
-		on_expire => $self->_capture_weakself( sub {
-			my $self = shift;
-			$self->done(
-				on_ok => sub {
-					$self->noop(
-						on_ok => sub {
-							$self->idle(%args);
-						}
-					);
-				}
-			);
-		})
-	);
-	my $loop = $self->get_loop or die "Could not get loop";
-	$loop->add($self->{idle_timer});
 	$self->{idle_timer}->start;
 	return $self;
 }
@@ -221,19 +227,35 @@ Set up the connection automatically when we are added to the loop.
 
 TODO: this is probably the wrong way to go about things, move this somewhere more appropriate.
 
+TODO(pe): Ish... It would be nice if the IO::Async::Protocol could manage an
+automatic ->connect call
+
 =cut
 
 sub _add_to_loop {
 	my $self = shift;
 	$self->SUPER::_add_to_loop(@_);
-	my $loop = $self->get_loop or die "No IO::Async::Loop available";
-	my $host = $self->{host};
+	$self->connect(
+		host    => $self->{host},
+		service => $self->{service},
+	);
+}
 
+=head2 connect
+
+=cut
+
+sub connect {
+	my $self = shift;
+	my %args = @_;
+
+	my $on_connected = delete $args{on_connected};
 	$self->state(Protocol::IMAP::ConnectionClosed);
-	Scalar::Util::weaken(my $weakSelf = $self);
-	$loop->connect(
-		host		=> $self->{host},
-		service		=> $self->{service} || 'imap2',
+	my $host = exists $args{host} ? delete $args{host} : $self->{host};
+	$self->SUPER::connect(
+		service		=> 'imap2',
+		%args,
+		host		=> $host,
 		socktype	=> SOCK_STREAM,
 		on_resolve_error => sub {
 			die "Resolution failed for $host";
@@ -242,11 +264,11 @@ sub _add_to_loop {
 			die "Could not connect to $host";
 		},
 		on_connected => sub {
-			my $sock = shift;
-			$weakSelf->state(Protocol::IMAP::ConnectionEstablished, $sock);
+			my ($self, $sock) = @_;
+			$self->state(Protocol::IMAP::ConnectionEstablished, $self->transport->read_handle);
+			$on_connected->($self) if $on_connected;
 		}
 	);
-	return $self;
 }
 
 1;

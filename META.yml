@@ -1,5 +1,5 @@
 ---
-abstract: 'Asynchronous IMAP client'
+abstract: 'Asynchronous IMAP handling'
 author:
   - 'Tom Molesworth <net-async-imap@entitymodel.com>'
 build_requires: {}
@@ -13,8 +13,9 @@ meta-spec:
   version: 1.4
 name: Net-Async-IMAP
 requires:
+  IO::Async: 0.34
   IO::Async::SSL: 0.04
-  Protocol::IMAP: 0.001
+  Protocol::IMAP: 0.002
   Socket: 0
   parent: 0
-version: 0.001
+version: 0.002

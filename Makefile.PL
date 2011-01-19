@@ -20,13 +20,13 @@ my %WriteMakefileArgs = (
   'LICENSE' => 'perl',
   'NAME' => 'Net::Async::IMAP',
   'PREREQ_PM' => {
-    'IO::Async' => '0.34',
+    'IO::Async' => '0.36',
     'IO::Async::SSL' => '0.04',
     'Protocol::IMAP' => '0.002',
     'Socket' => '0',
     'parent' => '0'
   },
-  'VERSION' => '0.002',
+  'VERSION' => '0.003',
   'test' => {
     'TESTS' => 't/*.t'
   }

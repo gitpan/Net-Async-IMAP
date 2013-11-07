@@ -10,6 +10,10 @@ our $VERSION = '0.003';
 
 Net::Async::IMAP::Server - asynchronous IMAP server based on L<Protocol::IMAP::Server> and L<IO::Async::Protocol::Stream>.
 
+=head1 VERSION
+
+version 0.004
+
 =head1 SYNOPSIS
 
  use IO::Async::Loop;
@@ -165,4 +169,3 @@ Tom Molesworth <net-async-imap@entitymodel.com>
 =head1 LICENSE
 
 Copyright Tom Molesworth 2010-2011. Licensed under the same terms as Perl itself.
-

@@ -3,7 +3,7 @@ package Net::Async::IMAP;
 use strict;
 use warnings;
 
-our $VERSION = '0.003';
+our $VERSION = '0.004';
 
 1;
 
@@ -12,6 +12,10 @@ __END__
 =head1 NAME
 
 Net::Async::IMAP::Client - asynchronous IMAP client based on L<Protocol::IMAP::Client> and L<IO::Async::Protocol::Stream>.
+
+=head1 VERSION
+
+version 0.004
 
 =head1 SYNOPSIS
 
@@ -46,5 +50,4 @@ improvements to the initial implementation of this module.
 
 =head1 LICENSE
 
-Copyright Tom Molesworth 2010-2011. Licensed under the same terms as Perl itself.
-
+Copyright Tom Molesworth 2010-2013. Licensed under the same terms as Perl itself.
